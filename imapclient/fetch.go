@@ -62,6 +62,9 @@ func writeFetchItems(enc *imapwire.Encoder, uid bool, options *imap.FetchOptions
 		"INTERNALDATE":  options.InternalDate,
 		"RFC822.SIZE":   options.RFC822Size,
 		"MODSEQ":        options.ModSeq,
+		"X-GM-MSGID":    options.XGmMsgID,
+		"X-GM-THRID":    options.XGmThreadID,
+		"X-GM-LABELS":   options.XGmLabels,
 	}
 	for k, req := range m {
 		if req {
@@ -277,6 +280,9 @@ var (
 	_ FetchItemData = FetchItemDataRFC822Size{}
 	_ FetchItemData = FetchItemDataUID{}
 	_ FetchItemData = FetchItemDataBodyStructure{}
+	_ FetchItemData = FetchItemXGmMsgID{}
+	_ FetchItemData = FetchItemXGmThreadID{}
+	_ FetchItemData = FetchItemXGmLabels{}
 )
 
 type discarder interface {
@@ -373,6 +379,33 @@ type FetchItemDataModSeq struct {
 
 func (FetchItemDataModSeq) fetchItemData() {}
 
+// FetchItemXGmMsgID holds data returned by FETCH X-GM-MSGID.
+//
+// This requires the X-GM-EXT-1 extension.
+type FetchItemXGmMsgID struct {
+	MsgID uint64
+}
+
+func (FetchItemXGmMsgID) fetchItemData() {}
+
+// FetchItemXGmThreadID holds data returned by FETCH X-GM-THRID.
+//
+// This requires the X-GM-EXT-1 extension.
+type FetchItemXGmThreadID struct {
+	ThreadID uint64
+}
+
+func (FetchItemXGmThreadID) fetchItemData() {}
+
+// FetchItemXGmLabels holds data returned by FETCH X-GM-LABELS.
+//
+// This requires the X-GM-EXT-1 extension.
+type FetchItemXGmLabels struct {
+	Labels []string
+}
+
+func (FetchItemXGmLabels) fetchItemData() {}
+
 // FetchMessageBuffer is a buffer for the data returned by FetchMessageData.
 //
 // The SeqNum field is always populated. All remaining fields are optional.
@@ -387,7 +420,10 @@ type FetchMessageBuffer struct {
 	BodySection       map[*imap.FetchItemBodySection][]byte
 	BinarySection     map[*imap.FetchItemBinarySection][]byte
 	BinarySectionSize []FetchItemDataBinarySectionSize
-	ModSeq            uint64 // requires CONDSTORE
+	ModSeq            uint64   // requires CONDSTORE
+	XGmMsgID          uint64   // requires X-GM-EXT-1
+	XGmThreadID       uint64   // requires X-GM-EXT-1
+	XGmLabels         []string // requires X-GM-EXT-1
 }
 
 func (buf *FetchMessageBuffer) populateItemData(item FetchItemData) error {
@@ -426,6 +462,12 @@ func (buf *FetchMessageBuffer) populateItemData(item FetchItemData) error {
 		buf.BinarySectionSize = append(buf.BinarySectionSize, item)
 	case FetchItemDataModSeq:
 		buf.ModSeq = item.ModSeq
+	case FetchItemXGmMsgID:
+		buf.XGmMsgID = item.MsgID
+	case FetchItemXGmThreadID:
+		buf.XGmThreadID = item.ThreadID
+	case FetchItemXGmLabels:
+		buf.XGmLabels = item.Labels
 	default:
 		panic(fmt.Errorf("unsupported fetch item data %T", item))
 	}
@@ -641,6 +683,36 @@ func (c *Client) handleFetch(seqNum uint32) error {
 				return dec.Err()
 			}
 			item = FetchItemDataModSeq{ModSeq: modSeq}
+		case "X-GM-MSGID":
+			var msgID uint64
+			if !dec.ExpectSP() || !dec.ExpectModSeq(&msgID) {
+				return dec.Err()
+			}
+			item = FetchItemXGmMsgID{MsgID: msgID}
+		case "X-GM-THRID":
+			var threadID uint64
+			if !dec.ExpectSP() || !dec.ExpectModSeq(&threadID) {
+				return dec.Err()
+			}
+			item = FetchItemXGmThreadID{ThreadID: threadID}
+		case "X-GM-LABELS":
+			var labels []string
+			if !dec.ExpectSP() {
+				return dec.Err()
+			}
+			err := dec.ExpectList(func() error {
+				var label string
+				if !dec.ExpectAString(&label) {
+					return dec.Err()
+				}
+				labels = append(labels, label)
+				return nil
+			})
+			if err != nil {
+				return dec.Err()
+			}
+			item = FetchItemXGmLabels{Labels: labels}
+
 		default:
 			return fmt.Errorf("unsupported msg-att name: %q", attName)
 		}

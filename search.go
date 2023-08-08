@@ -2,6 +2,7 @@ package imap
 
 import (
 	"reflect"
+	"strings"
 	"time"
 )
 
@@ -44,6 +45,11 @@ type SearchCriteria struct {
 	Or  [][2]SearchCriteria
 
 	ModSeq *SearchCriteriaModSeq // requires CONDSTORE
+
+	XGmRaw      string   // requires X-GM-EXT-1
+	XGmMsgID    uint64   // requires X-GM-EXT-1
+	XGmThreadID uint64   // requires X-GM-EXT-1
+	XGmLabels   []string // requires X-GM-EXT-1
 }
 
 // And intersects two search criteria.
@@ -72,6 +78,15 @@ func (criteria *SearchCriteria) And(other *SearchCriteria) {
 
 	criteria.Not = append(criteria.Not, other.Not...)
 	criteria.Or = append(criteria.Or, other.Or...)
+
+	criteria.XGmRaw = strings.Join([]string{criteria.XGmRaw, other.XGmRaw}, " ")
+	if criteria.XGmMsgID == 0 {
+		criteria.XGmMsgID = other.XGmMsgID
+	}
+	if criteria.XGmThreadID == 0 {
+		criteria.XGmThreadID = other.XGmThreadID
+	}
+	criteria.XGmLabels = append(criteria.XGmLabels, other.XGmLabels...)
 }
 
 func intersectSince(t1, t2 time.Time) time.Time {

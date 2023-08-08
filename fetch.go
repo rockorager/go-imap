@@ -21,6 +21,10 @@ type FetchOptions struct {
 	ModSeq            bool                          // requires CONDSTORE
 
 	ChangedSince uint64 // requires CONDSTORE
+
+	XGmMsgID    bool // requires X-GM-EXT-1
+	XGmLabels   bool // requires X-GM-EXT-1
+	XGmThreadID bool // requires X-GM-EXT-1
 }
 
 // FetchItemBodyStructure contains FETCH options for the body structure.

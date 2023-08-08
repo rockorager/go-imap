@@ -233,6 +233,21 @@ func writeSearchKey(enc *imapwire.Encoder, criteria *imap.SearchCriteria) {
 		}
 	}
 
+	if criteria.XGmRaw != "" {
+		encodeItem().Atom("X-GM-RAW").SP().Quoted(criteria.XGmRaw)
+	}
+	if criteria.XGmMsgID != 0 {
+		// Use ModSeq to encode a UINT64
+		encodeItem().Atom("X-GM-MSGID").SP().ModSeq(criteria.XGmMsgID)
+	}
+	if criteria.XGmThreadID != 0 {
+		// Use ModSeq to encode a UINT64
+		encodeItem().Atom("X-GM-THRID").SP().ModSeq(criteria.XGmThreadID)
+	}
+	for _, label := range criteria.XGmLabels {
+		encodeItem().Atom("X-GM-LABELS").SP().String(label)
+	}
+
 	for _, not := range criteria.Not {
 		encodeItem().Atom("NOT").SP()
 		writeSearchKey(enc, &not)
